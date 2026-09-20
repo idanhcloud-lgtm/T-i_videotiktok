@@ -53,11 +53,18 @@ def clean_old_downloads() -> None:
             pass
 
 
-def friendly_error(error: Exception) -> str:
+def friendly_error(url: str, error: Exception) -> str:
     text = str(error)
     lower = text.lower()
+    host = (urlparse(url).hostname or "").lower()
+    platform = "TikTok" if "tiktok.com" in host else "Douyin"
     if "fresh cookies" in lower or "cookie" in lower:
-        return "Douyin từ chối cookie hiện tại. Cần cập nhật cookies.txt trên máy chủ."
+        return f"{platform} từ chối cookie hiện tại. Hãy cập nhật cookie {platform} trên máy chủ."
+    if "no video formats" in lower:
+        return (
+            f"{platform} không cung cấp luồng video cho máy chủ Render. "
+            f"Hãy thử cookie {platform} mới; nếu vẫn lỗi thì IP Render đang bị chặn."
+        )
     if "video unavailable" in lower:
         return "Video không còn khả dụng, ở chế độ riêng tư hoặc bị giới hạn khu vực."
     if "unsupported url" in lower:
@@ -83,8 +90,15 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
         "fragment_retries": 3,
         "overwrites": False,
     }
-    if COOKIE_FILE and Path(COOKIE_FILE).is_file():
-        options["cookiefile"] = COOKIE_FILE
+    if COOKIE_FILE:
+        source_cookie = Path(COOKIE_FILE)
+        if not source_cookie.is_file():
+            raise RuntimeError("Không tìm thấy Secret File cookie trên máy chủ Render.")
+        # Render mounts secret files read-only, while yt-dlp may update its cookie
+        # jar. Work on a private, writable copy for this download instead.
+        cookie_copy = job_dir / "cookies.txt"
+        shutil.copyfile(source_cookie, cookie_copy)
+        options["cookiefile"] = str(cookie_copy)
 
     with YoutubeDL(options) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -148,10 +162,9 @@ def index():
             filepath, title = download_video(url, request.form.get("h264") == "on")
             return send_file(filepath, as_attachment=True, download_name=filepath.name, mimetype="video/mp4")
         except Exception as error:  # yt-dlp gives provider-specific exceptions
-            flash(friendly_error(error), "error")
+            flash(friendly_error(url, error), "error")
     return render_template("index.html")
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
-
