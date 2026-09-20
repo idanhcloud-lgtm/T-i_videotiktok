@@ -1,4 +1,5 @@
 Flask>=3.0,<4.0
 gunicorn>=22.0,<24.0
-yt-dlp>=2025.1.1
-
+# TikTok increasingly requires browser-TLS impersonation.  curl-cffi provides
+# the impersonation handler used by yt-dlp on a Linux service such as Render.
+yt-dlp[default,curl-cffi]>=2025.1.1
