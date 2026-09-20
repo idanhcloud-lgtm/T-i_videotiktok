@@ -1,0 +1,4 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Đăng nhập · Video riêng</title><link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}"></head>
+<body><main class="card login-card"><span class="eyebrow">DÙNG RIÊNG</span><h1>Video không logo</h1><p>Đăng nhập để tiếp tục.</p>{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}{% endwith %}<form method="post"><label for="password">Mật khẩu</label><input id="password" name="password" type="password" autocomplete="current-password" autofocus required><button type="submit">Vào ứng dụng</button></form></main></body></html>
+

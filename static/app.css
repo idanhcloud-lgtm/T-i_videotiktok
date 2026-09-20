@@ -1,0 +1,19 @@
+:root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #142b2a; background: #e8f2f0; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: radial-gradient(circle at top right, #b9e3db, transparent 36rem), #eef5f3; }
+.card { width: min(100%, 620px); padding: 30px; border-radius: 24px; background: rgba(255,255,255,.94); box-shadow: 0 18px 60px rgba(22, 65, 61, .16); }
+.login-card { width: min(100%, 420px); }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+h1 { margin: 4px 0 10px; font-size: clamp(1.85rem, 7vw, 2.6rem); letter-spacing: -.04em; }
+p { line-height: 1.55; } .intro { margin: 0 0 24px; color: #49615e; }
+.eyebrow { color: #197364; font-size: .75rem; font-weight: 800; letter-spacing: .13em; }
+label { display: block; margin: 0 0 8px; font-weight: 700; }
+textarea, input[type=password] { width: 100%; min-height: 50px; padding: 13px; border: 1px solid #aac7c0; border-radius: 12px; background: #fff; color: inherit; font: inherit; font-size: 16px; }
+textarea { resize: vertical; } textarea:focus, input:focus { outline: 3px solid #bae6dd; border-color: #197364; }
+.download-form { display: grid; gap: 14px; }
+.checkbox { display: flex; align-items: flex-start; gap: 10px; color: #49615e; font-weight: 500; font-size: .94rem; } .checkbox input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: #197364; }
+button { border: 0; border-radius: 12px; min-height: 50px; padding: 12px 18px; background: #197364; color: #fff; font: inherit; font-weight: 800; cursor: pointer; } button:active { transform: translateY(1px); }
+button.quiet { min-height: auto; padding: 8px 10px; color: #197364; background: transparent; }
+.notice { margin: 14px 0; padding: 12px; border-radius: 10px; background: #ffe7e7; color: #8b2020; }.hint { margin: 21px 0 0; color: #617572; font-size: .9rem; }
+@media (max-width: 480px) { body { padding: 0; place-items: stretch; } .card { min-height: 100vh; border-radius: 0; padding: 28px 20px; } }
+

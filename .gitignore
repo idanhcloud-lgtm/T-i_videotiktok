@@ -1,0 +1,6 @@
+.env
+cookies.txt
+downloads/
+__pycache__/
+*.py[cod]
+

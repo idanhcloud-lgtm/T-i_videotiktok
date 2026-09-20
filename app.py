@@ -1,0 +1,157 @@
+"""Private, mobile-friendly Douyin/TikTok downloader.
+
+Credentials are injected with environment variables, never committed to Git.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import secrets
+import shutil
+import time
+from pathlib import Path
+from urllib.parse import urlparse
+
+from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
+from yt_dlp import YoutubeDL
+
+BASE_DIR = Path(__file__).resolve().parent
+DOWNLOAD_DIR = BASE_DIR / "downloads"
+DOWNLOAD_DIR.mkdir(exist_ok=True)
+
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
+COOKIE_FILE = os.environ.get("COOKIE_FILE", "").strip()
+ALLOWED_HOSTS = ("douyin.com", "iesdouyin.com", "tiktok.com")
+URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
+TRAILING_JUNK = ".,;:!?\"')]}"
+
+app = Flask(__name__)
+app.secret_key = SECRET_KEY or "development-only-change-me"
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+
+
+def extract_url(value: str) -> str | None:
+    """Extract one supported URL from ordinary sharing text."""
+    for raw_url in URL_RE.findall(value or ""):
+        url = raw_url.rstrip(TRAILING_JUNK)
+        host = (urlparse(url).hostname or "").lower()
+        if any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_HOSTS):
+            return url
+    return None
+
+
+def clean_old_downloads() -> None:
+    """Keep completed files briefly so interrupted iPhone downloads can resume."""
+    cutoff = time.time() - 2 * 60 * 60
+    for item in DOWNLOAD_DIR.iterdir():
+        try:
+            if item.is_dir() and item.stat().st_mtime < cutoff:
+                shutil.rmtree(item, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def friendly_error(error: Exception) -> str:
+    text = str(error)
+    lower = text.lower()
+    if "fresh cookies" in lower or "cookie" in lower:
+        return "Douyin từ chối cookie hiện tại. Cần cập nhật cookies.txt trên máy chủ."
+    if "video unavailable" in lower:
+        return "Video không còn khả dụng, ở chế độ riêng tư hoặc bị giới hạn khu vực."
+    if "unsupported url" in lower:
+        return "Link này chưa được hỗ trợ. Hãy thử copy lại link video gốc."
+    return text.replace("ERROR: ", "").strip() or "Không thể tải video."
+
+
+def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
+    job_dir = DOWNLOAD_DIR / secrets.token_urlsafe(12)
+    job_dir.mkdir(parents=True)
+    no_watermark = "[format_id!^=download_addr][format_note!*=watermark]"
+    best = f"b{no_watermark}/b[format_note!*=watermark]/b"
+    h264 = f"b[format_id^=h264]{no_watermark}/b[vcodec^=avc]{no_watermark}/{best}"
+    options: dict = {
+        "outtmpl": str(job_dir / "%(uploader,channel,creator|video).40s - %(title,description|video).60s - %(id)s.%(ext)s"),
+        "format": h264 if prefer_h264 else best,
+        "noplaylist": True,
+        "windowsfilenames": True,
+        "trim_file_name": 150,
+        "quiet": True,
+        "noprogress": True,
+        "retries": 3,
+        "fragment_retries": 3,
+        "overwrites": False,
+    }
+    if COOKIE_FILE and Path(COOKIE_FILE).is_file():
+        options["cookiefile"] = COOKIE_FILE
+
+    with YoutubeDL(options) as ydl:
+        info = ydl.extract_info(url, download=True)
+        if not info:
+            raise RuntimeError("Không đọc được thông tin video")
+        if info.get("_type") == "playlist":
+            info = next((entry for entry in info.get("entries", []) if entry), None)
+        if not info:
+            raise RuntimeError("Link không có video để tải")
+        requested = info.get("requested_downloads") or []
+        filepath = requested[0].get("filepath") if requested else ydl.prepare_filename(info)
+        path = Path(filepath)
+        if not path.is_file():
+            matches = list(job_dir.glob("*"))
+            path = next((item for item in matches if item.is_file()), path)
+        if not path.is_file():
+            raise RuntimeError("Tải xong nhưng không tìm thấy file video")
+        return path, (info.get("title") or "video")
+
+
+@app.before_request
+def require_login():
+    if request.endpoint in {"login", "static"}:
+        return None
+    if not APP_PASSWORD:
+        abort(503, "Server chua duoc cau hinh APP_PASSWORD.")
+    if not session.get("authenticated"):
+        return redirect(url_for("login"))
+    clean_old_downloads()
+    return None
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not APP_PASSWORD:
+        abort(503, "Server chua duoc cau hinh APP_PASSWORD.")
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if secrets.compare_digest(password, APP_PASSWORD):
+            session.clear()
+            session["authenticated"] = True
+            return redirect(url_for("index"))
+        flash("Mật khẩu không đúng.", "error")
+    return render_template("login.html")
+
+
+@app.post("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        url = extract_url(request.form.get("link", ""))
+        if not url:
+            flash("Không tìm thấy link Douyin hoặc TikTok hợp lệ.", "error")
+            return render_template("index.html")
+        try:
+            filepath, title = download_video(url, request.form.get("h264") == "on")
+            return send_file(filepath, as_attachment=True, download_name=filepath.name, mimetype="video/mp4")
+        except Exception as error:  # yt-dlp gives provider-specific exceptions
+            flash(friendly_error(error), "error")
+    return render_template("index.html")
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=False)
+
