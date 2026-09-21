@@ -33,6 +33,32 @@ TRAILING_JUNK = ".,;:!?\"')]}"
 EXTRACT_ATTEMPTS = 3
 EXTRACT_RETRY_DELAY = 1.5
 
+def describe_cookie_file() -> str:
+    """Say on startup whether the cookie jar is actually in play.
+
+    A COOKIE_FILE left empty means yt-dlp silently runs without cookies, which
+    looks identical in the logs to having cookies that simply did not help.
+    """
+    if not COOKIE_FILE:
+        return "COOKIE_FILE chua duoc dat - chay KHONG cookie"
+    path = Path(COOKIE_FILE)
+    if not path.is_file():
+        return f"COOKIE_FILE={COOKIE_FILE} nhung KHONG TIM THAY file"
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        return f"COOKIE_FILE={COOKIE_FILE} doc khong duoc: {error}"
+    entries = [line for line in lines if line.strip() and not line.startswith("#")]
+    hosts = {line.split("	")[0].lstrip(".") for line in entries if "	" in line}
+    names = {line.split("	")[5] for line in entries if line.count("	") >= 6}
+    return (
+        f"COOKIE_FILE={COOKIE_FILE} OK: {len(entries)} cookie, "
+        f"domain={sorted(hosts)[:4]}, co sessionid={'sessionid' in names}"
+    )
+
+
+print("[cookie]", describe_cookie_file(), flush=True)
+
 app = Flask(__name__)
 app.secret_key = SECRET_KEY or "development-only-change-me"
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
