@@ -176,6 +176,7 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
             path = next((item for item in matches if item.is_file()), path)
         if not path.is_file():
             raise RuntimeError("Tải xong nhưng không tìm thấy file video")
+        print(f"[tai xong] id={info.get('id')} file={path.name}", flush=True)
         if (info.get("vcodec") or "none") == "none":
             raise RuntimeError(
                 "TikTok chỉ trả về phần nhạc của bài đăng này, không có hình. "
@@ -223,6 +224,9 @@ def index():
         if not url:
             flash("Không tìm thấy link Douyin hoặc TikTok hợp lệ.", "error")
             return render_template("index.html")
+        # The access log records the device; pairing it with the link is what
+        # tells a broken video apart from a broken phone.
+        print(f"[nhan link] {url}", flush=True)
         try:
             filepath, title = download_video(url, request.form.get("h264") == "on")
             return send_file(filepath, as_attachment=True, download_name=filepath.name, mimetype="video/mp4")
