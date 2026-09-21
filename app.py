@@ -99,11 +99,12 @@ def friendly_error(url: str, error: Exception) -> str:
     if "fresh cookies" in lower or "cookie" in lower:
         return f"{platform} từ chối cookie hiện tại. Hãy cập nhật cookie {platform} trên máy chủ."
     if "no video formats" in lower:
+        with_cookies = " kể cả khi đã dùng cookie đăng nhập," if COOKIE_FILE else ""
         return (
-            f"TikTok không trả luồng video cho bài đăng này, dù đã thử {EXTRACT_ATTEMPTS} lần. "
-            "Bài vẫn xem được trên app, nhưng TikTok chặn tải với một số bài — phần lớn "
-            "video khác vẫn tải bình thường. Cách khắc phục: nạp cookie TikTok của tài "
-            "khoản đã đăng nhập vào máy chủ."
+            f"TikTok không trả luồng video cho bài đăng này,{with_cookies} sau "
+            f"{EXTRACT_ATTEMPTS} lần thử. Bài vẫn xem được trên app vì TikTok phát theo "
+            "từng mảnh, nhưng không cho tải cả file. Đây là giới hạn từ phía TikTok, "
+            "không phải lỗi của ứng dụng — phần lớn video khác vẫn tải bình thường."
         )
     if "video unavailable" in lower:
         return "Video không còn khả dụng, ở chế độ riêng tư hoặc bị giới hạn khu vực."
@@ -178,7 +179,7 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
         if (info.get("vcodec") or "none") == "none":
             raise RuntimeError(
                 "TikTok chỉ trả về phần nhạc của bài đăng này, không có hình. "
-                "Hãy nạp cookie TikTok của tài khoản đã đăng nhập vào máy chủ."
+                "Bài này không tải được, nhưng video khác vẫn bình thường."
             )
         return path, (info.get("title") or "video")
 
