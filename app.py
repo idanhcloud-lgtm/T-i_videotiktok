@@ -27,9 +27,10 @@ COOKIE_FILE = os.environ.get("COOKIE_FILE", "").strip()
 ALLOWED_HOSTS = ("douyin.com", "iesdouyin.com", "tiktok.com")
 URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
 TRAILING_JUNK = ".,;:!?\"')]}"
-# TikTok answers some videos with an empty format list most of the time, so one
-# refusal says nothing about whether the video is really unavailable.
-EXTRACT_ATTEMPTS = 5
+# TikTok answers some posts with an empty format list most of the time. Asking
+# again costs a couple of seconds and does sometimes get an answer, though it
+# has never turned one of these posts into a downloadable video.
+EXTRACT_ATTEMPTS = 3
 EXTRACT_RETRY_DELAY = 1.5
 
 app = Flask(__name__)
@@ -73,9 +74,10 @@ def friendly_error(url: str, error: Exception) -> str:
         return f"{platform} từ chối cookie hiện tại. Hãy cập nhật cookie {platform} trên máy chủ."
     if "no video formats" in lower:
         return (
-            f"Bài đăng này không có luồng video để tải, dù đã thử {EXTRACT_ATTEMPTS} lần. "
-            "Thường gặp ở bài đăng dạng ảnh (slideshow) và video quảng cáo TikTok Shop — "
-            "chúng chỉ có ảnh kèm nhạc. Video thường vẫn tải bình thường."
+            f"TikTok không trả luồng video cho bài đăng này, dù đã thử {EXTRACT_ATTEMPTS} lần. "
+            "Bài vẫn xem được trên app, nhưng TikTok chặn tải với một số bài — phần lớn "
+            "video khác vẫn tải bình thường. Cách khắc phục: nạp cookie TikTok của tài "
+            "khoản đã đăng nhập vào máy chủ."
         )
     if "video unavailable" in lower:
         return "Video không còn khả dụng, ở chế độ riêng tư hoặc bị giới hạn khu vực."
@@ -149,8 +151,8 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
             raise RuntimeError("Tải xong nhưng không tìm thấy file video")
         if (info.get("vcodec") or "none") == "none":
             raise RuntimeError(
-                "Bài đăng này chỉ có nhạc, không có hình: đây là bài đăng dạng ảnh "
-                "(slideshow) chứ không phải video."
+                "TikTok chỉ trả về phần nhạc của bài đăng này, không có hình. "
+                "Hãy nạp cookie TikTok của tài khoản đã đăng nhập vào máy chủ."
             )
         return path, (info.get("title") or "video")
 
