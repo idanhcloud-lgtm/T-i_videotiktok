@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
 from yt_dlp import YoutubeDL
+from yt_dlp.networking.impersonate import ImpersonateTarget
 
 BASE_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = BASE_DIR / "downloads"
@@ -68,8 +69,9 @@ def friendly_error(url: str, error: Exception) -> str:
         return f"{platform} từ chối cookie hiện tại. Hãy cập nhật cookie {platform} trên máy chủ."
     if "no video formats" in lower:
         return (
-            f"{platform} không cung cấp luồng video cho máy chủ Render. "
-            f"Hãy thử cookie {platform} mới; nếu vẫn lỗi thì IP Render đang bị chặn."
+            f"{platform} không trả về luồng video cho máy chủ. Nguyên nhân thường gặp nhất "
+            f"là {platform} chặn dải IP của trung tâm dữ liệu. Cách khắc phục: đặt cookie "
+            f"{platform} mới vào Secret File trên máy chủ rồi trỏ COOKIE_FILE tới file đó."
         )
     if "video unavailable" in lower:
         return "Video không còn khả dụng, ở chế độ riêng tư hoặc bị giới hạn khu vực."
@@ -98,6 +100,9 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
         # response becomes a readable message instead of a killed worker.
         "socket_timeout": 30,
         "overwrites": False,
+        # TikTok returns an empty format list to plain HTTP clients, so borrow a
+        # real browser's TLS fingerprint through curl-cffi.
+        "impersonate": ImpersonateTarget("chrome"),
     }
     if COOKIE_FILE:
         source_cookie = Path(COOKIE_FILE)
