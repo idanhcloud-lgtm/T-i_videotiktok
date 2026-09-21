@@ -14,6 +14,8 @@ Thiết lập các environment variables `APP_PASSWORD` và `SECRET_KEY` trên d
 
 Lệnh start cho các dịch vụ hỗ trợ Gunicorn: `gunicorn --bind 0.0.0.0:$PORT app:app`
 
+Gunicorn tự đọc `gunicorn.conf.py` trong repo, nên không cần thêm tham số vào lệnh start. File này nâng timeout lên 300 giây: video được tải ngay trong request, và timeout mặc định 30 giây của Gunicorn giết worker giữa chừng khiến trang trả về `Internal Server Error`.
+
 ## Lưu ý
 
 - Đây là app cho hai người dùng tin cậy. Không chia sẻ mật khẩu hoặc URL nếu chưa cần thiết.

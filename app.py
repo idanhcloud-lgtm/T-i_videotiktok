@@ -45,7 +45,13 @@ def extract_url(value: str) -> str | None:
 def clean_old_downloads() -> None:
     """Keep completed files briefly so interrupted iPhone downloads can resume."""
     cutoff = time.time() - 2 * 60 * 60
-    for item in DOWNLOAD_DIR.iterdir():
+    try:
+        items = list(DOWNLOAD_DIR.iterdir())
+    except OSError:
+        # Render's disk is ephemeral, so the folder can vanish between requests.
+        DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        return
+    for item in items:
         try:
             if item.is_dir() and item.stat().st_mtime < cutoff:
                 shutil.rmtree(item, ignore_errors=True)
@@ -88,6 +94,9 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
         "noprogress": True,
         "retries": 3,
         "fragment_retries": 3,
+        # Give up well before gunicorn's own timeout so a stalled platform
+        # response becomes a readable message instead of a killed worker.
+        "socket_timeout": 30,
         "overwrites": False,
     }
     if COOKIE_FILE:
