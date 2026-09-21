@@ -26,6 +26,10 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "")
 COOKIE_FILE = os.environ.get("COOKIE_FILE", "").strip()
 ALLOWED_HOSTS = ("douyin.com", "iesdouyin.com", "tiktok.com")
 URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
+# yt-dlp matches .../video/<id> but not the .../photo/<id> form the TikTok app
+# hands out when sharing a photo post, which otherwise never reaches the
+# TikTok extractor at all.
+TIKTOK_PHOTO_RE = re.compile(r"(tiktok\.com/@[\w.\-]+)/photo/", re.I)
 TRAILING_JUNK = ".,;:!?\"')]}"
 # TikTok answers some posts with an empty format list most of the time. Asking
 # again costs a couple of seconds and does sometimes get an answer, though it
@@ -70,7 +74,7 @@ def extract_url(value: str) -> str | None:
         url = raw_url.rstrip(TRAILING_JUNK)
         host = (urlparse(url).hostname or "").lower()
         if any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_HOSTS):
-            return url
+            return TIKTOK_PHOTO_RE.sub(r"\1/video/", url)
     return None
 
 
@@ -99,12 +103,10 @@ def friendly_error(url: str, error: Exception) -> str:
     if "fresh cookies" in lower or "cookie" in lower:
         return f"{platform} từ chối cookie hiện tại. Hãy cập nhật cookie {platform} trên máy chủ."
     if "no video formats" in lower:
-        with_cookies = " kể cả khi đã dùng cookie đăng nhập," if COOKIE_FILE else ""
         return (
-            f"TikTok không trả luồng video cho bài đăng này,{with_cookies} sau "
-            f"{EXTRACT_ATTEMPTS} lần thử. Bài vẫn xem được trên app vì TikTok phát theo "
-            "từng mảnh, nhưng không cho tải cả file. Đây là giới hạn từ phía TikTok, "
-            "không phải lỗi của ứng dụng — phần lớn video khác vẫn tải bình thường."
+            f"Không lấy được luồng video sau {EXTRACT_ATTEMPTS} lần thử. Nguyên nhân hay "
+            "gặp nhất là bài đăng ẢNH (photo post): TikTok chỉ có nhạc nền cho loại bài "
+            "này, nên không có video để tải. Video thường vẫn tải bình thường."
         )
     if "video unavailable" in lower:
         return "Video không còn khả dụng, ở chế độ riêng tư hoặc bị giới hạn khu vực."
@@ -178,9 +180,12 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
             raise RuntimeError("Tải xong nhưng không tìm thấy file video")
         print(f"[tai xong] id={info.get('id')} file={path.name}", flush=True)
         if (info.get("vcodec") or "none") == "none":
+            # All that came back is the backing track of a photo post; drop it
+            # rather than hand the phone an .mp4 that shows nothing.
+            path.unlink(missing_ok=True)
             raise RuntimeError(
-                "TikTok chỉ trả về phần nhạc của bài đăng này, không có hình. "
-                "Bài này không tải được, nhưng video khác vẫn bình thường."
+                "Đây là bài đăng ẢNH (photo post), không phải video — TikTok chỉ "
+                "cung cấp phần nhạc nền. Công cụ này chỉ tải được video."
             )
         return path, (info.get("title") or "video")
 
