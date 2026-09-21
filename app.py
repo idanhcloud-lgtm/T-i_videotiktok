@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
 from yt_dlp import YoutubeDL
-from yt_dlp.networking.impersonate import ImpersonateTarget
+from yt_dlp.utils import DownloadError
 
 BASE_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = BASE_DIR / "downloads"
@@ -27,6 +27,10 @@ COOKIE_FILE = os.environ.get("COOKIE_FILE", "").strip()
 ALLOWED_HOSTS = ("douyin.com", "iesdouyin.com", "tiktok.com")
 URL_RE = re.compile(r"https?://[^\s<>\"']+", re.I)
 TRAILING_JUNK = ".,;:!?\"')]}"
+# TikTok answers some videos with an empty format list most of the time, so one
+# refusal says nothing about whether the video is really unavailable.
+EXTRACT_ATTEMPTS = 5
+EXTRACT_RETRY_DELAY = 1.5
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY or "development-only-change-me"
@@ -69,15 +73,31 @@ def friendly_error(url: str, error: Exception) -> str:
         return f"{platform} từ chối cookie hiện tại. Hãy cập nhật cookie {platform} trên máy chủ."
     if "no video formats" in lower:
         return (
-            f"{platform} không trả về luồng video cho máy chủ. Nguyên nhân thường gặp nhất "
-            f"là {platform} chặn dải IP của trung tâm dữ liệu. Cách khắc phục: đặt cookie "
-            f"{platform} mới vào Secret File trên máy chủ rồi trỏ COOKIE_FILE tới file đó."
+            f"Bài đăng này không có luồng video để tải, dù đã thử {EXTRACT_ATTEMPTS} lần. "
+            "Thường gặp ở bài đăng dạng ảnh (slideshow) và video quảng cáo TikTok Shop — "
+            "chúng chỉ có ảnh kèm nhạc. Video thường vẫn tải bình thường."
         )
     if "video unavailable" in lower:
         return "Video không còn khả dụng, ở chế độ riêng tư hoặc bị giới hạn khu vực."
     if "unsupported url" in lower:
         return "Link này chưa được hỗ trợ. Hãy thử copy lại link video gốc."
     return text.replace("ERROR: ", "").strip() or "Không thể tải video."
+
+
+def extract_with_retry(ydl: YoutubeDL, url: str) -> dict | None:
+    """Ask again when TikTok hands back a video with no formats attached.
+
+    yt-dlp's own `retries` only covers the transfer, so this refusal - which
+    arrives on a perfectly successful HTTP response - never gets a second try.
+    """
+    for attempt in range(1, EXTRACT_ATTEMPTS + 1):
+        try:
+            return ydl.extract_info(url, download=True)
+        except DownloadError as error:
+            if attempt == EXTRACT_ATTEMPTS or "no video formats" not in str(error).lower():
+                raise
+            time.sleep(EXTRACT_RETRY_DELAY)
+    return None
 
 
 def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
@@ -100,9 +120,6 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
         # response becomes a readable message instead of a killed worker.
         "socket_timeout": 30,
         "overwrites": False,
-        # TikTok returns an empty format list to plain HTTP clients, so borrow a
-        # real browser's TLS fingerprint through curl-cffi.
-        "impersonate": ImpersonateTarget("chrome"),
     }
     if COOKIE_FILE:
         source_cookie = Path(COOKIE_FILE)
@@ -115,7 +132,7 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
         options["cookiefile"] = str(cookie_copy)
 
     with YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=True)
+        info = extract_with_retry(ydl, url)
         if not info:
             raise RuntimeError("Không đọc được thông tin video")
         if info.get("_type") == "playlist":
@@ -130,6 +147,11 @@ def download_video(url: str, prefer_h264: bool) -> tuple[Path, str]:
             path = next((item for item in matches if item.is_file()), path)
         if not path.is_file():
             raise RuntimeError("Tải xong nhưng không tìm thấy file video")
+        if (info.get("vcodec") or "none") == "none":
+            raise RuntimeError(
+                "Bài đăng này chỉ có nhạc, không có hình: đây là bài đăng dạng ảnh "
+                "(slideshow) chứ không phải video."
+            )
         return path, (info.get("title") or "video")
 
 
